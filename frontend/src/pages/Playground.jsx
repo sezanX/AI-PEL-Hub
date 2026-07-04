@@ -1,18 +1,43 @@
-import { useState } from 'react';
-import { Send, Settings2, RotateCcw, CheckCircle2, TrendingUp, AlertCircle, Copy, Play } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Send, Settings2, RotateCcw, CheckCircle2, TrendingUp, AlertCircle, Copy, Play, Trash2 } from 'lucide-react';
 import api from '../services/api';
 
 const Playground = () => {
   const [prompt, setPrompt] = useState('Type your prompt here... For example: Act as a senior software engineer.\nReview the following code and provide suggestions for improvement...');
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [isOptimizing, setIsOptimizing] = useState(false);
   const [results, setResults] = useState(null);
   const [activeTab, setActiveTab] = useState('Score'); // Score, Feedback, Optimized
+  const [history, setHistory] = useState(() => {
+    const saved = localStorage.getItem('playgroundHistory');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('playgroundHistory', JSON.stringify(history));
+  }, [history]);
+
+  const templates = {
+    role: "Act as a [role]. Your task is to [task] while following these constraints: [constraints].",
+    fewShot: "Here are some examples:\nInput: [example 1]\nOutput: [result 1]\n\nInput: [example 2]\nOutput: [result 2]\n\nNow process this input: [your input]",
+    cot: "Let's think step by step to solve this problem:\n1. First, [step 1]\n2. Then, [step 2]\n3. Finally, [step 3]\n\nProblem: [your problem]"
+  };
 
   const handleEvaluate = async () => {
     setIsEvaluating(true);
     try {
       const { data } = await api.post('/ai/evaluate', { prompt });
       setResults(data);
+      setHistory(prev => {
+        const newHistory = [{
+          id: Date.now(),
+          title: prompt.split(' ').slice(0, 4).join(' ') + '...',
+          score: data.score,
+          prompt: prompt,
+          results: data
+        }, ...prev];
+        return newHistory.slice(0, 10); // Keep last 10
+      });
     } catch (error) {
       import('react-hot-toast').then(({ default: toast }) => {
         toast.error(error.response?.data?.message || 'Failed to evaluate prompt');
@@ -20,6 +45,49 @@ const Playground = () => {
     } finally {
       setIsEvaluating(false);
     }
+  };
+
+  const handleOptimize = async () => {
+    setIsOptimizing(true);
+    try {
+      const { data } = await api.post('/ai/evaluate', { prompt });
+      if (data.optimized) {
+        setPrompt(data.optimized);
+        import('react-hot-toast').then(({ default: toast }) => toast.success('Prompt optimized!'));
+      }
+    } catch (error) {
+      import('react-hot-toast').then(({ default: toast }) => {
+        toast.error(error.response?.data?.message || 'Failed to optimize prompt');
+      });
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
+  const handleCopyOptimized = () => {
+    if (results?.optimized) {
+      navigator.clipboard.writeText(results.optimized);
+      import('react-hot-toast').then(({ default: toast }) => toast.success('Copied to clipboard!'));
+    }
+  };
+
+  const handleTestPrompt = () => {
+    if (results?.optimized) {
+      setPrompt(results.optimized);
+      setResults(null);
+      setActiveTab('Score');
+      import('react-hot-toast').then(({ default: toast }) => toast.success('Prompt ready to test!'));
+    }
+  };
+
+  const handleDeleteHistory = (id) => {
+    setHistory(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handleViewHistory = (item) => {
+    setPrompt(item.prompt);
+    setResults(item.results);
+    setActiveTab('Score');
   };
 
   return (
@@ -64,8 +132,16 @@ const Playground = () => {
                   <><Send className="w-4 h-4" /> Evaluate Prompt</>
                 )}
               </button>
-              <button className="flex items-center justify-center gap-2 px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors shrink-0">
-                <Settings2 className="w-4 h-4" /> Optimize
+              <button 
+                onClick={handleOptimize}
+                disabled={isOptimizing || !prompt.trim()}
+                className="flex items-center justify-center gap-2 px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 disabled:opacity-75 transition-colors shrink-0"
+              >
+                {isOptimizing ? (
+                  <span className="flex items-center gap-2">Optimizing <span className="animate-pulse">...</span></span>
+                ) : (
+                  <><Settings2 className="w-4 h-4" /> Optimize</>
+                )}
               </button>
             </div>
           </div>
@@ -160,10 +236,10 @@ const Playground = () => {
                       {results.optimized}
                     </div>
                     <div className="flex gap-4 mt-6">
-                      <button className="flex items-center gap-2 px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                      <button onClick={handleCopyOptimized} className="flex items-center gap-2 px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors">
                         <Copy className="w-4 h-4" /> Copy Optimized
                       </button>
-                      <button className="flex items-center gap-2 px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                      <button onClick={handleTestPrompt} className="flex items-center gap-2 px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors">
                         <Play className="w-4 h-4" /> Test This Prompt
                       </button>
                     </div>
@@ -195,15 +271,15 @@ const Playground = () => {
             <p className="text-sm text-gray-500 mb-4">Common prompt structures</p>
             
             <div className="space-y-3">
-              <button className="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-primary hover:bg-blue-50 transition-all group">
+              <button onClick={() => setPrompt(templates.role)} className="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-primary hover:bg-blue-50 transition-all group">
                 <h4 className="font-semibold text-sm text-gray-900 group-hover:text-primary">Role-Based Prompt</h4>
                 <p className="text-xs text-gray-500 mt-1">Act as a [role]...</p>
               </button>
-              <button className="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-primary hover:bg-blue-50 transition-all group">
+              <button onClick={() => setPrompt(templates.fewShot)} className="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-primary hover:bg-blue-50 transition-all group">
                 <h4 className="font-semibold text-sm text-gray-900 group-hover:text-primary">Few-Shot Example</h4>
                 <p className="text-xs text-gray-500 mt-1">Here are examples...</p>
               </button>
-              <button className="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-primary hover:bg-blue-50 transition-all group">
+              <button onClick={() => setPrompt(templates.cot)} className="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-primary hover:bg-blue-50 transition-all group">
                 <h4 className="font-semibold text-sm text-gray-900 group-hover:text-primary">Chain-of-Thought</h4>
                 <p className="text-xs text-gray-500 mt-1">Let's think step by step...</p>
               </button>
@@ -213,29 +289,26 @@ const Playground = () => {
           {/* History */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
             <h2 className="text-lg font-bold text-gray-900 mb-4">Evaluation History</h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="w-8 h-8 rounded-full bg-dark text-white text-xs font-bold flex items-center justify-center">92</span>
-                  <span className="text-sm font-medium text-gray-700">Code Review</span>
-                </div>
-                <button className="text-sm text-primary hover:underline font-medium">View</button>
+            {history.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-4">No history yet.</p>
+            ) : (
+              <div className="space-y-4">
+                {history.map(item => (
+                  <div key={item.id} className="flex items-center justify-between group">
+                    <div className="flex items-center gap-3 truncate pr-2">
+                      <span className="w-8 h-8 rounded-full bg-dark text-white text-xs font-bold flex shrink-0 items-center justify-center">{item.score}</span>
+                      <span className="text-sm font-medium text-gray-700 truncate">{item.title}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={() => handleViewHistory(item)} className="text-sm text-primary hover:underline font-medium">View</button>
+                      <button onClick={() => handleDeleteHistory(item.id)} className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50 opacity-0 group-hover:opacity-100">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="w-8 h-8 rounded-full bg-dark text-white text-xs font-bold flex items-center justify-center">84</span>
-                  <span className="text-sm font-medium text-gray-700">Data Analysis</span>
-                </div>
-                <button className="text-sm text-primary hover:underline font-medium">View</button>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="w-8 h-8 rounded-full bg-dark text-white text-xs font-bold flex items-center justify-center">76</span>
-                  <span className="text-sm font-medium text-gray-700">Content Writing</span>
-                </div>
-                <button className="text-sm text-primary hover:underline font-medium">View</button>
-              </div>
-            </div>
+            )}
           </div>
 
         </div>
