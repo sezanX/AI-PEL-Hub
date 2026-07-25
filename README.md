@@ -4,22 +4,6 @@ An AI-powered educational platform designed to help users learn, practice, and i
 
 ---
 
-## Team Information
-
-**Team Name:** CSE4104-7C-T02
-**Section:** 7C
-
-### Team Members
-
-| Name              | Student ID  |
-| ----------------- | ----------- |
-| Rahmin Hossain    | 11230121156 |
-| Lamiha Faija      | 11230121140 |
-| Fatema Akter Elma | 11230121142 |
-| Masum Billah      | 11230121149 |
-
----
-
 ## Project Description
 
 The AI Prompt Engineering Learning Hub is a web-based educational platform focused on teaching modern prompt engineering techniques for Large Language Models (LLMs) such as ChatGPT, Gemini, and Claude.
